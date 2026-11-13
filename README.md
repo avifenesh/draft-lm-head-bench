@@ -46,7 +46,7 @@ takes the first N prompts per category, useful for a smoke run.
 
 **tf (teacher-forced).** The track is the target's own greedy continuation
 of each prompt, generated once with speculation off. Contexts are cut from it
-every 16 tokens (about 14k contexts). Each context gets exactly one draft
+every 16 tokens (10,667 contexts for the shared track). Each context gets exactly one draft
 round of K tokens, scored against the target's greedy pick. Contexts are
 identical across arms, so a difference comes from the head, not from the
 generations drifting apart. The report gives the rate per draft position, the
