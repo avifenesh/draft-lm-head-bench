@@ -1,0 +1,16 @@
+{
+ "model": "Qwen/Qwen3.5-4B",
+ "revision": "851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a",
+ "max_tokens": 256,
+ "n": 880,
+ "env": {
+  "python": "3.12.13",
+  "vllm": "0.33.0",
+  "torch": "2.14.0+cu130",
+  "cuda": "13.0",
+  "gpu": "NVIDIA GeForce RTX 5090 Laptop GPU",
+  "capability": "12.0",
+  "gpu_mem_gib": 23.5,
+  "driver": "615.71.09"
+ }
+}

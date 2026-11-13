@@ -53,8 +53,10 @@ generations drifting apart. The report gives the rate per draft position, the
 mean accepted length, and a paired comparison against `none`: position-0
 discordant pairs, exact McNemar p, and 95% intervals.
 
-To compare two machines on identical contexts, generate `data/track.jsonl` on
-one and copy it to the other. The report shows how often the target's own
+To compare two machines on identical contexts, use the shared track:
+`tracks/qwen3.5-4b-k3-rtx5090laptop.jsonl` (target greedy, speculation off,
+256 tokens, generated on an RTX 5090 Laptop with vLLM 0.33.0). Pass it with
+`--track tracks/qwen3.5-4b-k3-rtx5090laptop.jsonl` and skip `track`. The report shows how often the target's own
 first pick agrees with the shared track, so a cross-machine numerics gap is
 visible rather than hidden.
 
