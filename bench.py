@@ -533,9 +533,16 @@ class GpuSampler:
     FIELDS = ("clocks.sm,temperature.gpu,power.draw,"
               "clocks_throttle_reasons.hw_thermal_slowdown,"
               "clocks_throttle_reasons.sw_thermal_slowdown,"
-              "clocks_throttle_reasons.hw_power_brake_slowdown")
+              "clocks_throttle_reasons.hw_power_brake_slowdown,fan.speed")
+
+    @staticmethod
+    def physical_index() -> str:
+        """The physical GPU the run uses: first CUDA_VISIBLE_DEVICES entry."""
+        first = os.environ.get("CUDA_VISIBLE_DEVICES", "0").split(",")[0].strip()
+        return first or "0"
 
     def __init__(self) -> None:
+        self.index = self.physical_index()
         self.samples: list[list[str]] = []
         self._stop = threading.Event()
         self._t = threading.Thread(target=self._run, daemon=True)
@@ -544,7 +551,7 @@ class GpuSampler:
         while not self._stop.is_set():
             with contextlib.suppress(Exception):
                 out = subprocess.run(
-                    ["nvidia-smi", "-i", "0", f"--query-gpu={self.FIELDS}",
+                    ["nvidia-smi", "-i", self.index, f"--query-gpu={self.FIELDS}",
                      "--format=csv,noheader,nounits"],
                     capture_output=True, text=True, timeout=10).stdout.strip()
                 self.samples.append([x.strip() for x in out.split(",")])
@@ -568,8 +575,11 @@ class GpuSampler:
         tmp = [num(r[1]) for r in self.samples if num(r[1]) is not None]
         pw = [num(r[2]) for r in self.samples if num(r[2]) is not None]
         flags = [r[3:6] for r in self.samples if len(r) >= 6]
+        fan = [num(r[6]) for r in self.samples if len(r) >= 7 and num(r[6]) is not None]
         return {
             "n": len(self.samples),
+            "gpu_index": self.index,
+            "fan_max": max(fan) if fan else None,
             "sm_clock_median": statistics.median(clk) if clk else None,
             "sm_clock_min": min(clk) if clk else None,
             "temp_max": max(tmp) if tmp else None,
