@@ -1,0 +1,37 @@
+{
+ "model": "Qwen/Qwen3.5-4B",
+ "revision": "851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a",
+ "max_tokens": 256,
+ "n": 669,
+ "prompts_sha256": "76e0074a4d5251a8c6de10993ffc4aa8646600d2b3a5a0fb709a7548dc89780c",
+ "env": {
+  "python": "3.12.13",
+  "vllm": "0.33.0",
+  "torch": "2.14.0+cu130",
+  "cuda": "13.0",
+  "gpu": "NVIDIA GeForce RTX 5090 Laptop GPU",
+  "capability": "12.0",
+  "gpu_mem_gib": 23.5,
+  "driver": "615.71.09"
+ },
+ "prompt_set": {
+  "source": "nvidia/SPEED-Bench@fa4e669bee2a4393c56aa8ed05a7c667897f9590 qualitative, resolved by specdec_bench prepare_data.py (NVIDIA/Model-Optimizer@e481d487570a1ad13092d88be900ba8d985ce850)",
+  "kept": 669,
+  "dropped_long": 2,
+  "dropped_unresolvable": {
+   "skip_source": [
+    "cais/hle"
+   ],
+   "count": 208,
+   "by_category": {
+    "humanities": 72,
+    "math": 62,
+    "stem": 74
+   }
+  },
+  "dropped_duplicate_first_turn": [
+   "dc707b3e22d44b9fb91fe4dbaa0579fd"
+  ],
+  "sha256": "76e0074a4d5251a8c6de10993ffc4aa8646600d2b3a5a0fb709a7548dc89780c"
+ }
+}
