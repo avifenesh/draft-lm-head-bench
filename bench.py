@@ -554,7 +554,14 @@ class GpuSampler:
                     ["nvidia-smi", "-i", self.index, f"--query-gpu={self.FIELDS}",
                      "--format=csv,noheader,nounits"],
                     capture_output=True, text=True, timeout=10).stdout.strip()
-                self.samples.append([x.strip() for x in out.split(",")])
+                row = [x.strip() for x in out.split(",")]
+                ac = None
+                for ps in Path("/sys/class/power_supply").glob("*"):
+                    if (ps / "type").exists() and (ps / "type").read_text().strip() == "Mains":
+                        ac = (ps / "online").read_text().strip()
+                        break
+                row.append(ac or "")
+                self.samples.append(row)
             self._stop.wait(1.0)
 
     def __enter__(self):
@@ -585,6 +592,11 @@ class GpuSampler:
             "temp_max": max(tmp) if tmp else None,
             "power_median": statistics.median(pw) if pw else None,
             "thermal_throttled": any("Active" in f[0] or "Active" in f[1] for f in flags),
+            "thermal_frac": (sum(1 for f in flags if "Active" in f[0] or "Active" in f[1])
+                             / len(flags)) if flags else None,
+            "temp_first": tmp[0] if tmp else None,
+            # mains supply state per sample ("1" online), empty where there is no mains supply
+            "ac_dropped": any(len(r) >= 8 and r[7] == "0" for r in self.samples),
             "power_brake": any("Active" in f[2] for f in flags),
         }
 
@@ -855,7 +867,7 @@ def report_serve(out: Path, lines: list[str]) -> None:
     lines += ["## Served (OpenAI server, streaming client)", "",
               "Per rep: median over requests. Across reps: median (min..max).", ""]
     lines += ["| C | arm | reps | decode tok/s/user | total tok/s | TTFT ms | TPOT ms | AL | " +
-              " | ".join(f"pos {j}" for j in range(k)) + " | model GiB | KV tokens | SM MHz | throttled reps |",
+              " | ".join(f"pos {j}" for j in range(k)) + " | model GiB | KV tokens | SM MHz | max thermal-flag share |",
               "|" + "---|" * (k + 12)]
 
     def mmm(vals, fmt):
@@ -877,7 +889,7 @@ def report_serve(out: Path, lines: list[str]) -> None:
                      " | ".join(pct(v) for v in pp) +
                      f" | {srv.get('model_load_gib', '-')} | {srv.get('kv_cache_tokens', '-')} | "
                      f"{statistics.median([r['gpu']['sm_clock_median'] or 0 for r in rs]):.0f} | "
-                     f"{sum(1 for r in rs if r['gpu']['thermal_throttled'])} |")
+                     f"{max((r['gpu'].get('thermal_frac') or 0) for r in rs):.0%} |")
     lines.append("")
 
 
