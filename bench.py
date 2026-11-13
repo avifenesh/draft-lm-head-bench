@@ -604,6 +604,26 @@ class GpuSampler:
         }
 
 
+def gpu_temp() -> float | None:
+    with contextlib.suppress(Exception):
+        out = subprocess.run(
+            ["nvidia-smi", "-i", GpuSampler.physical_index(), "--query-gpu=temperature.gpu",
+             "--format=csv,noheader,nounits"], capture_output=True, text=True, timeout=10).stdout
+        return float(out.strip())
+    return None
+
+
+def cool_wait(target: float, timeout_s: float) -> None:
+    """Hold an idle, loaded server until the GPU is at or below `target` C, so a
+    timed window on a thermally limited card starts cool."""
+    deadline = time.time() + timeout_s
+    t = gpu_temp()
+    while t is not None and t > target and time.time() < deadline:
+        time.sleep(5)
+        t = gpu_temp()
+    log(f"timed window starts at {t} C")
+
+
 def start_server(args, arm: str, port: int, logf):
     cmd = [
         sys.executable, "-m", "vllm.entrypoints.cli.main", "serve", args.model,
@@ -676,6 +696,8 @@ def cmd_serve(args) -> None:
                     wait_ready(args.port, proc, 1800)
                     for p in prompts[: min(4, len(prompts))]:  # warm-up
                         stream_one(args.port, args.model, p["prompt_ids"], 32)
+                    if args.cool_to:
+                        cool_wait(args.cool_to, 900)
                     before = scrape_metrics(args.port)
                     t0 = time.perf_counter()
                     with GpuSampler() as gpu, ThreadPoolExecutor(max_workers=args.concurrency) as ex:
@@ -942,6 +964,8 @@ def main() -> None:
     ap.add_argument("--concurrency", type=int, default=1)
     ap.add_argument("--reps", type=int, default=3)
     ap.add_argument("--port", type=int, default=8765)
+    ap.add_argument("--cool-to", type=float, default=0,
+                    help="serve: wait until the GPU is at or below this C before timing (0 = off)")
     args = ap.parse_args()
     os.environ.setdefault("VLLM_USE_V2_MODEL_RUNNER", "1")  # the feature is MRV2 only
     {"prompts": cmd_prompts, "track": cmd_track, "tf": cmd_tf, "greedy": cmd_greedy,
