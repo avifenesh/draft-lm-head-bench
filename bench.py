@@ -591,13 +591,16 @@ class GpuSampler:
             "sm_clock_min": min(clk) if clk else None,
             "temp_max": max(tmp) if tmp else None,
             "power_median": statistics.median(pw) if pw else None,
-            "thermal_throttled": any("Active" in f[0] or "Active" in f[1] for f in flags),
-            "thermal_frac": (sum(1 for f in flags if "Active" in f[0] or "Active" in f[1])
+            # nvidia-smi prints "Active" or "Not Active": compare exactly.
+            "thermal_throttled": any(f[0] == "Active" or f[1] == "Active" for f in flags),
+            "thermal_frac": (sum(1 for f in flags if f[0] == "Active" or f[1] == "Active")
                              / len(flags)) if flags else None,
             "temp_first": tmp[0] if tmp else None,
             # mains supply state per sample ("1" online), empty where there is no mains supply
             "ac_dropped": any(len(r) >= 8 and r[7] == "0" for r in self.samples),
-            "power_brake": any("Active" in f[2] for f in flags),
+            "power_brake": any(f[2] == "Active" for f in flags),
+            "fields": self.FIELDS + ",mains_online",
+            "samples": self.samples,
         }
 
 
