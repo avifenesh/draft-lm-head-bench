@@ -21,23 +21,45 @@ not change. Only acceptance, and through it throughput, can move.
 - Model `Qwen/Qwen3.5-4B` at revision `851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a`, BF16, MTP, K=3.
   Its head is 248320 x 2560, the same shape as the Qwen3.8-Flash-Next head in #59973.
 - Full vocabulary. No FR-Spec or sparse head.
-- Prompts: all 880 of SPEED-Bench `qualitative` (11 categories x 80, first turn),
-  at revision `fa4e669bee2a4393c56aa8ed05a7c667897f9590`, chat template with thinking off.
+- Prompts: SPEED-Bench `qualitative` (first turn), resolved by NVIDIA's
+  `specdec_bench` (below) without the gated `cais/hle` rows, chat template
+  with thinking off.
 - Greedy, seed 0, 256 output tokens, prefix caching off, max model len 8192.
 - vLLM 0.33.0 (Model Runner V2; the feature is MRV2 only).
 
 ## Run
 
+The SPEED-Bench copy on Hugging Face masks 494 of the 880 qualitative rows
+with the sentence "FULL BENCHMARK DATA SHOULD BE FETCHED FROM THE SOURCE
+USING SPECDEC_BENCH". Resolve them with NVIDIA's own specdec_bench, pinned.
+One source, `cais/hle`, is gated on the Hub; `resolve_speed.py` drops its rows
+instead of resolving them, so the set is reproducible without gated access,
+and lists the dropped ids in a sidecar file.
+
+```bash
+git clone --filter=blob:none --no-checkout https://github.com/NVIDIA/Model-Optimizer mo
+git -C mo sparse-checkout set --no-cone examples/specdec_bench
+git -C mo checkout e481d487570a1ad13092d88be900ba8d985ce850
+pip install -r mo/examples/specdec_bench/requirements.txt
+python resolve_speed.py --specdec-dir mo/examples/specdec_bench --out data/speed-qualitative.parquet
+```
+
+Then:
+
 ```bash
 pip install vllm==0.33.0 pyarrow
 
-python bench.py prompts                 # data/prompts.jsonl
+python bench.py prompts --speed-parquet data/speed-qualitative.parquet
 python bench.py track                   # data/track.jsonl (skip if you use a shared track)
 python bench.py tf                      # teacher-forced, 3 arms
 python bench.py greedy                  # free-running, one request in flight, 3 arms
 python bench.py serve --concurrency 1 --limit 8 --reps 3   # timed, served
 python bench.py report                  # results/REPORT.md
 ```
+
+`prompts` refuses a parquet that still holds a placeholder or duplicate
+prompts, and writes a digest of the prompt set. `track` and `tf` refuse a
+track built from a different prompt set.
 
 Each arm runs in its own process. `--arms nvfp4` runs one arm. `--limit N`
 takes the first N prompts per category, useful for a smoke run.
@@ -46,17 +68,17 @@ takes the first N prompts per category, useful for a smoke run.
 
 **tf (teacher-forced).** The track is the target's own greedy continuation
 of each prompt, generated once with speculation off. Contexts are cut from it
-every 16 tokens (10,667 contexts for the shared track). Each context gets exactly one draft
+every 16 tokens. Each context gets exactly one draft
 round of K tokens, scored against the target's greedy pick. Contexts are
 identical across arms, so a difference comes from the head, not from the
 generations drifting apart. The report gives the rate per draft position, the
 mean accepted length, and a paired comparison against `none`: position-0
 discordant pairs, exact McNemar p, and 95% intervals.
 
-To compare two machines on identical contexts, use the shared track:
-`tracks/qwen3.5-4b-k3-rtx5090laptop.jsonl` (target greedy, speculation off,
-256 tokens, generated on an RTX 5090 Laptop with vLLM 0.33.0). Pass it with
-`--track tracks/qwen3.5-4b-k3-rtx5090laptop.jsonl` and skip `track`. The report shows how often the target's own
+To compare two machines on identical contexts, use a shared track from
+`tracks/` (target greedy, speculation off, 256 tokens). Copy the `.jsonl` and
+its `.jsonl.meta.json` next to each other, pass `--track`, and skip `track`.
+The report shows how often the target's own
 first pick agrees with the shared track, so a cross-machine numerics gap is
 visible rather than hidden.
 

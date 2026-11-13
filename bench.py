@@ -199,23 +199,48 @@ def out_name(args, mode: str, arm: str) -> Path:
 # prompts
 
 
+PLACEHOLDER = "FULL BENCHMARK DATA SHOULD BE FETCHED FROM THE SOURCE USING SPECDEC_BENCH"
+SPECDEC_BENCH_COMMIT = "e481d487570a1ad13092d88be900ba8d985ce850"  # NVIDIA/Model-Optimizer
+
+
+def check_prompt_rows(rows: list[dict]) -> None:
+    """Fail on the masked rows the HF copy ships."""
+    masked = [r["question_id"] for r in rows if any(PLACEHOLDER in t for t in r["turns"])]
+    if masked:
+        sys.exit(
+            f"{len(masked)} of {len(rows)} SPEED-Bench rows are the placeholder "
+            f"{PLACEHOLDER!r}. The HF copy masks them; resolve the full data with NVIDIA's "
+            "specdec_bench prepare_data.py (see README) and pass --speed-parquet."
+        )
+
+
 def cmd_prompts(args) -> None:
     import pyarrow.parquet as pq
     from transformers import AutoTokenizer
 
-    url = (
-        f"https://huggingface.co/datasets/{SPEED_BENCH}/resolve/"
-        f"{SPEED_BENCH_REV}/qualitative/test-00000-of-00001.parquet"
-    )
-    cache = Path(args.out) / "speed-bench-qualitative.parquet"
-    cache.parent.mkdir(parents=True, exist_ok=True)
-    if not cache.exists():
-        log(f"downloading {url}")
-        urllib.request.urlretrieve(url, cache)
-    rows = pq.read_table(cache).to_pylist()
+    if not args.speed_parquet:
+        sys.exit(
+            "pass --speed-parquet: the qualitative split resolved by NVIDIA specdec_bench "
+            f"prepare_data.py (Model-Optimizer {SPECDEC_BENCH_COMMIT[:10]}), see README"
+        )
+    rows = pq.read_table(args.speed_parquet).to_pylist()
+    check_prompt_rows(rows)
+    side_path = Path(str(args.speed_parquet) + ".dropped.json")
+    side = None
+    if side_path.exists():
+        sd = json.loads(side_path.read_text())
+        by_cat: dict[str, int] = {}
+        for d in sd["dropped"]:
+            by_cat[d["category"]] = by_cat.get(d["category"], 0) + 1
+        side = {"skip_source": sd["skip_source"], "count": len(sd["dropped"]), "by_category": by_cat}
     tok = AutoTokenizer.from_pretrained(args.model, revision=args.revision)
-    kept, dropped = [], 0
+    kept, dropped, seen, dups = [], 0, set(), []
     for r in rows:
+        # Only the first turn is used; keep the first row of any repeated one.
+        if r["turns"][0] in seen:
+            dups.append(r["question_id"])
+            continue
+        seen.add(r["turns"][0])
         msgs = [{"role": "user", "content": r["turns"][0]}]
         ids = tok.apply_chat_template(
             msgs, add_generation_prompt=True, tokenize=True, enable_thinking=False
@@ -229,10 +254,25 @@ def cmd_prompts(args) -> None:
     with open(args.prompts, "w") as f:
         for r in kept:
             f.write(json.dumps(r) + "\n")
-    log(f"wrote {len(kept)} prompts to {args.prompts} (dropped {dropped} over {args.max_prompt_tokens} tokens)")
+    import hashlib
+
+    digest = hashlib.sha256(Path(args.prompts).read_bytes()).hexdigest()
+    write_json(Path(args.prompts + ".meta.json"), {
+        "source": f"{SPEED_BENCH}@{SPEED_BENCH_REV} qualitative, resolved by specdec_bench "
+                  f"prepare_data.py (NVIDIA/Model-Optimizer@{SPECDEC_BENCH_COMMIT})",
+        "placeholders": 0, "rows": len(rows), "kept": len(kept), "dropped_long": dropped,
+        "dropped_unresolvable": side, "dropped_duplicate_first_turn": dups,
+        "max_prompt_tokens": args.max_prompt_tokens, "model": args.model,
+        "revision": args.revision, "sha256": digest,
+    })
+    log(f"wrote {len(kept)} prompts to {args.prompts} (dropped {dropped} over "
+        f"{args.max_prompt_tokens} tokens), sha256 {digest[:16]}")
 
 
 def load_prompts(args) -> list[dict]:
+    meta = Path(args.prompts + ".meta.json")
+    if not meta.exists() or json.loads(meta.read_text()).get("placeholders") != 0:
+        sys.exit(f"{args.prompts} was not built from the resolved SPEED-Bench data; rerun `prompts`")
     rows = read_jsonl(Path(args.prompts))
     if args.limit:
         by_cat: dict[str, list] = {}
@@ -257,8 +297,9 @@ def cmd_track(args) -> None:
         for p, o in zip(prompts, outs):
             f.write(json.dumps({"id": p["id"], "category": p["category"],
                                 "track": list(o.outputs[0].token_ids)}) + "\n")
+    pmeta = json.loads(Path(args.prompts + ".meta.json").read_text())
     meta = {"model": args.model, "revision": args.revision, "max_tokens": args.max_tokens,
-            "n": len(prompts), "env": env_info()}
+            "n": len(prompts), "prompts_sha256": pmeta["sha256"], "env": env_info()}
     write_json(Path(args.track + ".meta.json"), meta)
     log(f"wrote {len(prompts)} tracks to {args.track}")
 
@@ -268,7 +309,15 @@ def cmd_track(args) -> None:
 
 
 def build_contexts(args) -> list[dict]:
-    prompts = {p["id"]: p for p in read_jsonl(Path(args.prompts))}
+    saved_limit, args.limit = args.limit, 0
+    prompts = {p["id"]: p for p in load_prompts(args)}
+    args.limit = saved_limit
+    pmeta = json.loads(Path(args.prompts + ".meta.json").read_text())
+    tmeta_path = Path(args.track + ".meta.json")
+    tmeta = json.loads(tmeta_path.read_text()) if tmeta_path.exists() else {}
+    if tmeta.get("prompts_sha256") != pmeta["sha256"]:
+        sys.exit(f"{args.track} was built from a different prompt set "
+                 f"({tmeta.get('prompts_sha256')} vs {pmeta['sha256']}); rebuild or re-pull it")
     ctxs = []
     for t in read_jsonl(Path(args.track)):
         p = prompts.get(t["id"])
@@ -860,6 +909,7 @@ def main() -> None:
     ap.add_argument("--tf-counters-only", action="store_true",
                     help="tf: one verify round per context, global counters only (cross-check)")
     ap.add_argument("--limit", type=int, default=0, help="first N prompts per category (0 = all)")
+    ap.add_argument("--speed-parquet", help="prompts: resolved SPEED-Bench qualitative parquet")
     ap.add_argument("--prompts", default="data/prompts.jsonl")
     ap.add_argument("--track", default="data/track.jsonl")
     ap.add_argument("--out", default="results")
