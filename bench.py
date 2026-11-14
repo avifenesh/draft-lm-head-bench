@@ -673,6 +673,16 @@ def parse_server_log(text: str) -> dict:
     m = re.search(r"GPU KV cache size: ([0-9,]+) tokens", text)
     if m:
         info["kv_cache_tokens"] = int(m.group(1).replace(",", ""))
+    # The profile behind the KV size. A launch that compiles with a cold cache can show a larger
+    # activation peak and so a smaller KV cache than a warm launch of the same arm.
+    for key, pat in (("kv_cache_gib", r"Available KV cache memory: ([0-9.]+) GiB"),
+                     ("consumed_gib", r"Actual usage is ([0-9.]+) GiB for consumed"),
+                     ("peak_activation_gib", r"([0-9.]+) GiB for peak activation"),
+                     ("cudagraph_gib", r"and ([0-9.]+) GiB for CUDAGraph"),
+                     ("compile_s", r"\(compilation: ([0-9.]+) s\)")):
+        m = re.search(pat, text)
+        if m:
+            info[key] = float(m.group(1))
     info["head_lines"] = [ln.strip()[-160:] for ln in text.splitlines()
                           if "copy of the lm_head" in ln or "NvFp4" in ln and "Using" in ln
                           or "Fp8" in ln and "Selected" in ln][:6]
@@ -898,6 +908,8 @@ def report_serve(out: Path, lines: list[str]) -> None:
     def mmm(vals, fmt):
         return f"{fmt.format(statistics.median(vals))} ({fmt.format(min(vals))}..{fmt.format(max(vals))})"
 
+    notes: list[str] = []
+
     for (c, arm) in sorted(groups, key=lambda x: (x[0], ARMS.index(x[1]))):
         rs = groups[(c, arm)]
         dec = [statistics.median([q["decode_tok_s"] for q in r["requests"] if q["decode_tok_s"]]) for r in rs]
@@ -909,13 +921,29 @@ def report_serve(out: Path, lines: list[str]) -> None:
         al = 1 + sum(x["accepted"] for x in cs) / dr
         pp = [sum(x["per_pos"][j] if j < len(x["per_pos"]) else 0 for x in cs) / dr for j in range(k)]
         srv = rs[0]["server"]
+        kvs = [r["server"]["kv_cache_tokens"] for r in rs if r["server"].get("kv_cache_tokens")]
+        kv = "-"
+        if kvs:
+            kv = f"{statistics.median(kvs):.0f}"
+            if min(kvs) != max(kvs):
+                kv += f" ({min(kvs)}..{max(kvs)})"
+                notes.append(f"C{c} {arm}: KV tokens differ between launches: " + ", ".join(
+                    f"{r['server'].get('kv_cache_tokens')}"
+                    + (f" (peak activation {r['server']['peak_activation_gib']} GiB, "
+                       f"compile {r['server'].get('compile_s')} s)"
+                       if r["server"].get("peak_activation_gib") is not None else "")
+                    for r in rs))
         lines.append(f"| {c} | {arm} | {len(rs)} | {mmm(dec, '{:.1f}')} | {mmm(tot, '{:.1f}')} | "
                      f"{mmm(ttft, '{:.1f}')} | {mmm(tpot, '{:.2f}')} | {al:.3f} | " +
                      " | ".join(pct(v) for v in pp) +
-                     f" | {srv.get('model_load_gib', '-')} | {srv.get('kv_cache_tokens', '-')} | "
+                     f" | {srv.get('model_load_gib', '-')} | {kv} | "
                      f"{statistics.median([r['gpu']['sm_clock_median'] or 0 for r in rs]):.0f} | "
                      f"{max((r['gpu'].get('thermal_frac') or 0) for r in rs):.0%} |")
     lines.append("")
+    if notes:
+        lines += ["KV tokens: median across launches (min..max). The first launch on a machine compiles "
+                  "with a cold cache and can profile a larger activation peak, which leaves a smaller KV cache. "
+                  "Compare arms on warm launches.", ""] + [f"- {n}" for n in notes] + [""]
 
 
 def cmd_report(args) -> None:

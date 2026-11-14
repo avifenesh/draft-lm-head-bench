@@ -56,7 +56,25 @@ Per rep: median over requests. Across reps: median (min..max).
 
 | C | arm | reps | decode tok/s/user | total tok/s | TTFT ms | TPOT ms | AL | pos 0 | pos 1 | pos 2 | model GiB | KV tokens | SM MHz | max thermal-flag share |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 1 | none | 3 | 58.2 (58.2..58.2) | 56.7 (56.7..56.7) | 109.7 (109.5..109.8) | 17.19 (17.18..17.19) | 3.036 | 85.6% | 66.8% | 51.3% | 50.93 | 183785 | 1530 | 0% |
+| 1 | none | 3 | 58.2 (58.2..58.2) | 56.7 (56.7..56.7) | 109.7 (109.5..109.8) | 17.19 (17.18..17.19) | 3.036 | 85.6% | 66.8% | 51.3% | 50.93 | 194470 (183785..194470) | 1530 | 0% |
 | 1 | fp8 | 3 | 61.0 (60.9..61.0) | 60.0 (59.9..60.0) | 103.8 (103.6..103.8) | 16.40 (16.39..16.42) | 3.034 | 85.5% | 66.8% | 51.1% | 52.11 | 186278 | 1537 | 0% |
 | 1 | nvfp4 | 3 | 63.0 (62.9..63.0) | 61.3 (61.3..61.4) | 101.4 (101.2..101.5) | 15.88 (15.88..15.89) | 3.030 | 85.5% | 66.7% | 50.9% | 51.6 | 189484 | 1537 | 0% |
 
+KV tokens: median across launches (min..max). The first launch on a machine compiles with a cold cache and can profile a larger activation peak, which leaves a smaller KV cache. Compare arms on warm launches.
+
+- C1 none: KV tokens differ between launches: 183785, 194470, 194470
+
+## KV cache size: correction (2026-11-14)
+
+An earlier version of this report listed BF16 KV tokens as 183,785. That was the first BF16 launch only,
+and it was the one launch on this machine that compiled with a cold cache. From the server logs:
+
+| launch | compile s | consumed GiB (weights + non-torch) | peak activation GiB | CUDA graph GiB | KV GiB | KV tokens |
+|---|---|---|---|---|---|---|
+| BF16 rep 0 (cold compile) | 15.22 | 51.11 | 2.88 | 0.12 | 26.80 | 183,785 |
+| BF16 rep 1, 2 | 0.35 | 51.10 | 1.37 | 0.12 | 28.33 | 194,470 |
+| fp8 rep 0, 1, 2 | 0.33 | 52.29 | 1.38 | 0.12 | 27.14 | 186,278 |
+| nvfp4 rep 0, 1, 2 | 0.34 | 51.80 | 1.37 | 0.14 | 27.63 | 189,484 |
+
+On warm launches the quantized head costs KV capacity: fp8 -1.19 GiB (-4.2% tokens), nvfp4 -0.70 GiB (-2.6% tokens).
+That is the size of the extra head copy (+1.18 GiB fp8, +0.67 GiB nvfp4).

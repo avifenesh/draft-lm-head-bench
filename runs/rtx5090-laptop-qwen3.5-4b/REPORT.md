@@ -79,3 +79,19 @@ Rule set before the runs: a take is void and retaken when the software thermal f
 
 SM clock median per valid take (rep 1, 2, 3): BF16 2156, 2100, 2002 MHz; fp8 2234, 2325, 2212; nvfp4 2250, 2137, 2238.
 The host ran other CPU work during all takes.
+
+## KV cache size by arm (`kv-probe.json`, `tools/kv_probe.py`)
+
+Startup-only launches, one lease, cold or warm compile cache:
+
+| launch | compile s | consumed GiB (weights + non-torch) | peak activation GiB | CUDA graph GiB | KV GiB | KV tokens |
+|---|---|---|---|---|---|---|
+| BF16 cold | 11.43 | 8.23 | 1.51 | 0.12 | 10.25 | 160,329 |
+| BF16 warm (x2) | 0.42, 0.35 | 8.23 | 0.81 | 0.12 | 10.95 | 171,446 |
+| fp8 warm | 0.31 | 8.83 | 0.81 | 0.12 | 10.34 | 161,792 |
+| nvfp4 warm | 0.34 | 8.64 | 0.82 | 0.17 | 10.52 | 164,717 |
+| nvfp4 cold | 11.85 | 8.64 | 1.52 | 0.17 | 9.82 | 153,892 |
+
+The quantized head costs KV capacity by about the size of the extra copy: fp8 -0.61 GiB (-5.6% tokens),
+nvfp4 -0.43 GiB (-3.9% tokens). A launch that compiles with a cold cache profiles a 0.70 GiB larger
+activation peak in either arm and gets a smaller KV cache. All nine served takes above were warm launches.

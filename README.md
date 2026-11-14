@@ -104,3 +104,8 @@ retaken.
   W4A16 on SM100 by default. Check the `head_lines` field in the serve results
   or the engine log for what each arm resolved to.
 - Throughput numbers are only comparable within one machine.
+
+KV cache size: compare arms on warm launches only. The first launch on a machine compiles with a
+cold cache, profiles a larger activation peak and gets a smaller KV cache than later launches of
+the same arm. `report` shows the KV size as a median across launches and lists launches that differ.
+`tools/kv_probe.py` runs startup-only launches with a cold and a warm cache per arm.

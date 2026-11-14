@@ -1,0 +1,80 @@
+[
+ {
+  "label": "none-cold",
+  "ready": true,
+  "load_gib": "8.09",
+  "kv_gib": "10.25",
+  "kv_tokens": "160,329",
+  "consumed_gib": "8.23",
+  "peak_act_gib": "1.51",
+  "cudagraph_gib": "0.12",
+  "free": "23.08/23.51",
+  "compile_s": "11.43",
+  "graphs_compiled": 2
+ },
+ {
+  "label": "none-warm",
+  "ready": true,
+  "load_gib": "8.09",
+  "kv_gib": "10.95",
+  "kv_tokens": "171,446",
+  "consumed_gib": "8.23",
+  "peak_act_gib": "0.81",
+  "cudagraph_gib": "0.12",
+  "free": "23.08/23.51",
+  "compile_s": "0.42",
+  "graphs_compiled": 0
+ },
+ {
+  "label": "fp8-warm",
+  "ready": true,
+  "load_gib": "8.68",
+  "kv_gib": "10.34",
+  "kv_tokens": "161,792",
+  "consumed_gib": "8.83",
+  "peak_act_gib": "0.81",
+  "cudagraph_gib": "0.12",
+  "free": "23.08/23.51",
+  "compile_s": "0.31",
+  "graphs_compiled": 0
+ },
+ {
+  "label": "nvfp4-warm",
+  "ready": true,
+  "load_gib": "8.42",
+  "kv_gib": "10.52",
+  "kv_tokens": "164,717",
+  "consumed_gib": "8.64",
+  "peak_act_gib": "0.82",
+  "cudagraph_gib": "0.17",
+  "free": "23.08/23.51",
+  "compile_s": "0.34",
+  "graphs_compiled": 0
+ },
+ {
+  "label": "nvfp4-cold",
+  "ready": true,
+  "load_gib": "8.42",
+  "kv_gib": "9.82",
+  "kv_tokens": "153,892",
+  "consumed_gib": "8.64",
+  "peak_act_gib": "1.52",
+  "cudagraph_gib": "0.17",
+  "free": "23.08/23.51",
+  "compile_s": "11.85",
+  "graphs_compiled": 2
+ },
+ {
+  "label": "none-warm2",
+  "ready": true,
+  "load_gib": "8.09",
+  "kv_gib": "10.95",
+  "kv_tokens": "171,446",
+  "consumed_gib": "8.23",
+  "peak_act_gib": "0.81",
+  "cudagraph_gib": "0.12",
+  "free": "23.08/23.51",
+  "compile_s": "0.35",
+  "graphs_compiled": 0
+ }
+]
