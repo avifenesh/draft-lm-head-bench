@@ -50,3 +50,32 @@ Greedy output parity against `none`:
 | fp8 | 669 | 669 | 1.0000 | - |
 | nvfp4 | 669 | 669 | 1.0000 | - |
 
+## Served (OpenAI server, streaming client)
+
+Per rep: median over requests. Across reps: median (min..max).
+
+| C | arm | reps | decode tok/s/user | total tok/s | TTFT ms | TPOT ms | AL | pos 0 | pos 1 | pos 2 | model GiB | KV tokens | SM MHz | max thermal-flag share |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | none | 3 | 156.1 (154.7..158.0) | 147.3 (146.8..149.1) | 43.8 (43.6..46.7) | 6.41 (6.33..6.46) | 2.815 | 80.0% | 58.8% | 42.8% | 8.09 | 171446 | 2100 | 3% |
+| 1 | fp8 | 3 | 164.8 (162.0..181.0) | 160.7 (154.7..170.2) | 43.7 (43.4..46.0) | 6.07 (5.52..6.17) | 2.823 | 80.1% | 59.3% | 42.9% | 8.68 | 161792 | 2234 | 2% |
+| 1 | nvfp4 | 3 | 191.5 (188.6..191.5) | 180.4 (177.1..184.5) | 40.8 (37.7..41.8) | 5.22 (5.22..5.30) | 2.794 | 79.3% | 58.4% | 41.7% | 8.42 | 164717 | 2238 | 0% |
+
+## Served takes: conditions and void takes
+
+Each served take is one server launch on its own GPU lease: warm-up, cool-down, then a timed window of
+44 prompts x 256 tokens (`--limit 4 --cool-to 55`). Arm order rotated across the three reps. Files are
+`serve-rep{1,2,3}-k3-c1-{arm}-r0.json`; each carries the raw GPU samples.
+
+Rule set before the runs: a take is void and retaken when the software thermal flag is on for more than
+5% of samples, the start temperature is 86 C or more, or mains power drops.
+
+`void-takes/` holds every take that was not used:
+
+| file | prompts | decode tok/s/user | thermal-flag share | why void |
+|---|---|---|---|---|
+| serve-rep1-k3-c1-none-r0-try0..try3 | 86 | 152.1, 143.9, 154.7, 149.0 | 48%, 71%, 28%, 55% | old 2-minute window with no cool-down; all throttled. The window was shortened after these. |
+| serve-rep2-k3-c1-fp8-r0-try0 | 44 | 174.6 | 5.6% | over the 5% rule |
+| serve-rep2-k3-c1-none-r0-try0 | 44 | 137.9 | 38% | over the 5% rule |
+
+SM clock median per valid take (rep 1, 2, 3): BF16 2156, 2100, 2002 MHz; fp8 2234, 2325, 2212; nvfp4 2250, 2137, 2238.
+The host ran other CPU work during all takes.
